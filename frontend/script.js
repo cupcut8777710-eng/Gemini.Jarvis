@@ -6,27 +6,37 @@ if(!API_KEY){
 }
 
 // ===== 2. SMART MODELS (auto failover) =====
-const MODELS = ["gemini-3.6-flash", "gemini-flash-latest"];
+const MODELS = ["gemini-1.5-flash", "gemini-flash-latest"];
 const chat = document.getElementById('chat');
 const input = document.getElementById('msg');
 const micBtn = document.getElementById('mic-btn');
 
-// ===== 3. GEMINI BRAIN (auto-fallback) =====
+// ===== 3. GEMINI BRAIN (auto-fallback & safe parsing) =====
 async function callGemini(p){
   let lastErr;
   for(const m of MODELS){
     try{
       const res = await fetch(
         "https://generativelanguage.googleapis.com/v1beta/models/"+m+":generateContent?key="+API_KEY,
-        {method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({contents: [{parts:[{text:p}]}]})}
+        {
+          method:"POST", 
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({contents: [{parts:[{text:p}]}]})
+        }
       );
       const data = await res.json();
+      
       if(data.error){
         lastErr = new Error(data.error.message);
         if(/high demand|temporar|quota|rate|unavailable|deprecated/i.test(data.error.message)) continue;
+        throw lastErr;
       }
-      return data.candidates[0].content.parts[0].text;
+      
+      if(data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts[0]){
+        return data.candidates[0].content.parts[0].text;
+      } else {
+        throw new Error("Invalid API response format");
+      }
     }catch(e){ lastErr = e; }
   }
   throw lastErr;
@@ -37,7 +47,7 @@ async function askGemini(p){
   try{
     const reply = await callGemini(p);
     chat.lastChild.innerText = 'J.A.R.V.I.S: ' + reply;
-    speak(reply); // Reply in Voice
+    speak(reply);
   }catch(e){
     chat.lastChild.innerText = 'J.A.R.V.I.S: ERROR - ' + e.message;
   }
@@ -47,7 +57,7 @@ async function askGemini(p){
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 if(SR && micBtn){
   const rec = new SR();
-  rec.lang = 'en-US'; // Change to 'te-IN' if you want Telugu voice recognition
+  rec.lang = 'en-US';
   rec.onresult = (e) => {
     const t = e.results[0][0].transcript;
     add('YOU: ' + t, 'user');
@@ -92,5 +102,5 @@ function add(text, who) {
   d.innerText = text;
   chat.appendChild(d);
   chat.scrollTop = chat.scrollHeight;
-  }
+           }
       
